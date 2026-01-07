@@ -1,0 +1,8 @@
+# Ignore everything in dist/
+*
+
+# Except the main executable
+!TaskbarIconOverlay.exe
+
+# Don't ignore this .gitignore file
+!.gitignore
