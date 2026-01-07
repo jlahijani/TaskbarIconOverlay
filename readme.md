@@ -2,11 +2,15 @@
 
 A Windows utility that applies custom overlay icons to taskbar buttons based on window titles or process names.  Optimized for VS Code/VSCodium.
 
+![Screenshot](screenshot.png)
+
 ## Motivation
 
-Windows applications often look identical in the taskbar, making it hard to distinguish between multiple instances or different projects. While Windows doesn't allow you to easily change the icon of a program for different instances, it does support overlay icons (small badges on taskbar buttons) - and this is what this tool takes full advantage of. By adding custom overlay icons to taskbar buttons, you can easily identify specific windows at a glance.
+I use Windows 11 combined with [Windhawk's "Disable grouping on the taskbar"](https://windhawk.net/mods/taskbar-grouping) mod which means my taskbar items aren't grouped and it shows the icon only. As a result, when running an application in multiple instances (like VS Code), it's difficult to distinguish which icon corresponds to which project or window.
 
-While this tool was primarily built to distinguish between multiple VS Code/VSCodium workspace windows, it's kept generic enough to work with any application. Perfect for developers working with multiple Visual Studio Code workspaces, browser windows for different projects, or any scenario where you want visual distinction between similar applications. Especially useful when you've disabled taskbar item grouping, as each window gets its own taskbar button.
+While Windows doesn't allow you to easily change the icon of a program for different instances, it does support overlay icons (small badges on taskbar buttons) - and this is what this tool takes full advantage of. By adding custom overlay icons to taskbar buttons, you can easily identify specific windows at a glance.
+
+While this tool was primarily built to distinguish between multiple VS Code/VSCodium workspace windows (and perhaps other popular text editors in the future), it's kept generic enough to work with any application. Perfect for developers working with multiple Visual Studio Code workspaces, browser windows for different projects, or any scenario where you want visual distinction between similar applications.
 
 ## Requirements
 
@@ -20,7 +24,7 @@ While this tool was primarily built to distinguish between multiple VS Code/VSCo
 
 1. Download `TaskbarIconOverlay.exe` from the [dist](dist) folder
 2. Add your icons to an `icons` folder in the same directory
-3. Run the executable
+3. Run the executable in a terminal window (e.g., PowerShell or Command Prompt). You can also double-click the executable, but running it in a terminal is preferred so you can see output and pass command-line arguments
 
 **Optional:** Create a `config.json` file if you want to customize the icons folder location (see Configuration section below)
 
