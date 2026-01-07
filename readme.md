@@ -1,6 +1,6 @@
 # TaskbarIconOverlay
 
-A Windows utility that applies custom overlay icons to taskbar buttons based on window titles or process names.
+A Windows utility that applies custom overlay icons to taskbar buttons based on window titles or process names.  Optimized for VS Code/VSCodium.
 
 ## Motivation
 
