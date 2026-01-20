@@ -42,31 +42,22 @@ class Program
             (args[0].Equals("--list-all", StringComparison.OrdinalIgnoreCase) ||
              args[0].Equals("-l", StringComparison.OrdinalIgnoreCase));
 
-        bool watchMode = args.Length > 0 &&
-            (args[0].Equals("--watch", StringComparison.OrdinalIgnoreCase) ||
-             args[0].Equals("-w", StringComparison.OrdinalIgnoreCase));
-
-        int watchIntervalSeconds = 3; // Default interval
-        if (watchMode && args.Length > 1 && int.TryParse(args[1], out int customInterval) && customInterval > 0)
-        {
-            watchIntervalSeconds = customInterval;
-        }
-
         if (listAllWindows)
         {
             ListAllWindows();
             return 0;
         }
 
-        if (watchMode)
+        // Interactive mode - stay open and allow re-applying overlays
+        while (true)
         {
-            RunWatchMode(watchIntervalSeconds);
-            return 0;
+            _processedWindows.Clear(); // Clear tracked windows to allow re-applying
+            ApplyOverlays(verbose: true);
+            Console.WriteLine();
+            Console.WriteLine("Press Enter to re-apply overlays, or Ctrl+C to exit...");
+            Console.ReadLine();
+            Console.Clear();
         }
-
-        // Single run mode
-        ApplyOverlays(verbose: true);
-        return 0;
     }
 
     static void ListAllWindows()
@@ -98,30 +89,6 @@ class Program
 
             return true;
         }, IntPtr.Zero);
-    }
-
-    static void RunWatchMode(int intervalSeconds)
-    {
-        Console.WriteLine($"Watch mode started. Checking every {intervalSeconds} second(s). Press Ctrl+C to stop.");
-        Console.WriteLine();
-
-        // Handle Ctrl+C gracefully
-        Console.CancelKeyPress += (sender, e) =>
-        {
-            Console.WriteLine();
-            Console.WriteLine("Watch mode stopped.");
-            e.Cancel = false;
-        };
-
-        while (true)
-        {
-            var appliedIcons = ApplyOverlays(verbose: false);
-            if (appliedIcons.Count > 0)
-            {
-                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Applied {appliedIcons.Count} overlay(s): {string.Join(", ", appliedIcons)}");
-            }
-            Thread.Sleep(intervalSeconds * 1000);
-        }
     }
 
     static List<string> ApplyOverlays(bool verbose)

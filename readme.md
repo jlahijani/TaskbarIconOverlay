@@ -57,13 +57,6 @@ For example, if you have a VS Code workspace named "TaskbarIconOverlay", create 
   TaskbarIconOverlay.exe
   ```
 
-- **Watch mode** (`--watch` or `-w`): Continuously monitor and apply overlays
-  ```
-  TaskbarIconOverlay.exe --watch
-  TaskbarIconOverlay.exe --watch 5
-  ```
-  Optional: Specify interval in seconds (default: 3)
-
 - **List windows** (`--list-all` or `-l`): Show all visible windows with their process names
   ```
   TaskbarIconOverlay.exe --list-all
@@ -103,9 +96,7 @@ dotnet run
 
 **With command-line arguments:**
 ```powershell
-dotnet run -- --watch
 dotnet run -- --list-all
-dotnet run -- --watch 5
 ```
 
 Note: The `--` separator is required to pass arguments to the program (not to the `dotnet run` command itself).
