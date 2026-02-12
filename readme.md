@@ -88,10 +88,8 @@ dotnet run
 To build the executable for distribution:
 
 ```powershell
-dotnet publish -c Release -r win-x64 -o .\dist --no-self-contained -p:PublishSingleFile=false
+dotnet publish -c Release -r win-x64 -o .\dist
 ```
-
-This creates a standalone executable at `dist\TaskbarIconOverlay.exe` that includes the .NET runtime and requires no additional dependencies.
 
 ## TODO
 
