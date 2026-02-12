@@ -17,14 +17,15 @@ While this tool was primarily built to distinguish between multiple VS Code/VSCo
 - **Platform**: Windows x86-64 (Intel/AMD 64-bit processors)
 - **Tested on**: Windows 11 25H2
 - Other Windows versions may work but have not been tested
+- .NET 8 Desktop Runtime installed
 
 ## How to Use
 
 ### Quick Start
 
-1. Download `TaskbarIconOverlay.exe` from the [dist](dist) folder
+1. Download the latest release in the releases section of GitHub
 2. Add your icons to an `icons` folder in the same directory
-3. Run the executable in a terminal window (e.g., PowerShell or Command Prompt). You can also double-click the executable, but running it in a terminal is preferred so you can see output and pass command-line arguments
+3. Run the executable (make sure .NET 8 Desktop Runtime installed)
 
 **Optional:** Create a `config.json` file if you want to customize the icons folder location (see Configuration section below)
 
@@ -50,18 +51,6 @@ Icons should be named to match:
 
 For example, if you have a VS Code workspace named "TaskbarIconOverlay", create `TaskbarIconOverlay.ico` in your icons folder.
 
-### Command-Line Flags
-
-- **Default** (no flags): Apply overlays once to all matching windows
-  ```
-  TaskbarIconOverlay.exe
-  ```
-
-- **List windows** (`--list-all` or `-l`): Show all visible windows with their process names
-  ```
-  TaskbarIconOverlay.exe --list-all
-  ```
-
 ## Where to Get Icons
 
 - [icon-icons.com](https://icon-icons.com/) - Large collection of free icons
@@ -74,14 +63,14 @@ For example, if you have a VS Code workspace named "TaskbarIconOverlay", create 
 The tool includes special handling for Visual Studio Code and VSCodium:
 
 - Automatically extracts workspace/folder names from VS Code window titles
-- Looks for matching `.ico` files based on the workspace name
-- Falls back to the process name (`code.ico`) if no workspace-specific icon exists
+- Looks for matching `.ico` files in a subfolder named after the process (e.g., `icons/Code/` for VS Code, `icons/VSCodium/` for VSCodium)
+- Falls back to the process name (`code.ico` or `vscodium.ico`) in the root icons folder if no workspace-specific icon exists
 
-**Example:** If you have a workspace file named `my-cool-project.code-workspace`, the tool will look for an icon file named `my-cool-project.ico` in your icons folder.
+**Example:** If you have a VS Code workspace named `my-cool-project`, the tool will look for `icons/Code/my-cool-project.ico`. For VSCodium, it would look for `icons/VSCodium/my-cool-project.ico`.
 
 This allows different VS Code windows to have different overlay icons based on which project you're working on.
 
-## Development & Testing
+## How to Develop & Test
 
 To test the program during development without building an executable:
 
@@ -94,24 +83,17 @@ To test the program during development without building an executable:
 dotnet run
 ```
 
-**With command-line arguments:**
-```powershell
-dotnet run -- --list-all
-```
+### How to Compile
 
-Note: The `--` separator is required to pass arguments to the program (not to the `dotnet run` command itself).
-
-## How to Compile
-
-To build the single-file executable for distribution:
+To build the executable for distribution:
 
 ```powershell
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\dist
+dotnet publish -c Release -r win-x64 -o .\dist --no-self-contained -p:PublishSingleFile=false
 ```
 
 This creates a standalone executable at `dist\TaskbarIconOverlay.exe` that includes the .NET runtime and requires no additional dependencies.
 
 ## TODO
 
-- [ ] Support for Cursor editor
-- [ ] Support for Zed editor
+- [ ] Support for other VSCode derivatives (Cursor, Kiro, etc.)
+- [ ] Support for Zed Editor

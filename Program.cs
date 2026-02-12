@@ -1,18 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
+using System.Windows.Forms;
+using Microsoft.Win32;
 
 class Program
 {
     static string ConfigFilePath => Path.Combine(AppContext.BaseDirectory, "config.json");
 
-    // Track windows that already have overlays applied (by window handle)
-    static readonly HashSet<IntPtr> _processedWindows = new();
+    static System.Windows.Forms.Timer? _pollTimer;
 
     // Process names to ignore (system/shell windows that don't need overlays)
     static readonly string[] IgnoredProcessNames = {
@@ -26,6 +27,8 @@ class Program
         "LockApp"
     };
 
+    static NotifyIcon? _trayIcon;
+
     static bool IsIgnoredProcess(string processName)
     {
         foreach (var ignored in IgnoredProcessNames)
@@ -36,73 +39,125 @@ class Program
         return false;
     }
 
-    static int Main(string[] args)
+    [STAThread]
+    static void Main(string[] args)
     {
-        bool listAllWindows = args.Length > 0 && 
-            (args[0].Equals("--list-all", StringComparison.OrdinalIgnoreCase) ||
-             args[0].Equals("-l", StringComparison.OrdinalIgnoreCase));
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
 
-        if (listAllWindows)
+        // Create system tray icon
+        _trayIcon = new NotifyIcon
         {
-            ListAllWindows();
-            return 0;
+            Text = "TaskbarIconOverlay",
+            Visible = true
+        };
+
+        // Try to load the app icon, fall back to a default
+        string appIconPath = Path.Combine(AppContext.BaseDirectory, "app.ico");
+        if (File.Exists(appIconPath))
+        {
+            _trayIcon.Icon = new Icon(appIconPath);
+        }
+        else
+        {
+            _trayIcon.Icon = SystemIcons.Application;
         }
 
-        // Interactive mode - stay open and allow re-applying overlays
-        while (true)
-        {
-            _processedWindows.Clear(); // Clear tracked windows to allow re-applying
-            ApplyOverlays(verbose: true);
-            Console.WriteLine();
-            Console.WriteLine("Press Enter to re-apply overlays, or Ctrl+C to exit...");
-            Console.ReadLine();
-            Console.Clear();
-        }
-    }
-
-    static void ListAllWindows()
-    {
-        Console.WriteLine("Listing all visible windows:");
-        Console.WriteLine(new string('-', 80));
+        // Create context menu
+        var contextMenu = new ContextMenuStrip();
         
-        EnumWindows((hWnd, lParam) =>
+        var applyItem = new ToolStripMenuItem("Apply Overlays");
+        applyItem.Click += (s, e) => ApplyOverlaysWithNotification();
+        contextMenu.Items.Add(applyItem);
+
+        var removeItem = new ToolStripMenuItem("Remove Overlays");
+        removeItem.Click += (s, e) => RemoveOverlays();
+        contextMenu.Items.Add(removeItem);
+
+        var autoReapplyItem = new ToolStripMenuItem("Auto-Reapply");
+        autoReapplyItem.Checked = true;
+        autoReapplyItem.Click += (s, e) =>
         {
-            if (!IsWindowVisible(hWnd)) return true;
+            var item = (ToolStripMenuItem)s!;
+            item.Checked = !item.Checked;
+            if (item.Checked)
+                StartPolling();
+            else
+                StopPolling();
+        };
+        contextMenu.Items.Add(autoReapplyItem);
 
-            string title = GetTitle(hWnd);
-            if (string.IsNullOrWhiteSpace(title)) return true;
+        var startupItem = new ToolStripMenuItem("Start with Windows");
+        startupItem.Checked = IsStartupEnabled();
+        startupItem.Click += (s, e) =>
+        {
+            var item = (ToolStripMenuItem)s!;
+            item.Checked = !item.Checked;
+            SetStartupEnabled(item.Checked);
+        };
+        contextMenu.Items.Add(startupItem);
 
-            string processName = GetProcessName(hWnd);
-            string className = GetClass(hWnd);
-            bool ignored = IsIgnoredProcess(processName);
+        contextMenu.Items.Add(new ToolStripSeparator());
 
-            Console.Write($"[{processName}] ({className})");
-            if (ignored)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.Write(" [IGNORED]");
-                Console.ResetColor();
-            }
-            Console.WriteLine();
-            Console.WriteLine($"  Title: {title}");
-            Console.WriteLine();
+        var exitItem = new ToolStripMenuItem("Exit");
+        exitItem.Click += (s, e) =>
+        {
+            StopPolling();
+            _trayIcon.Visible = false;
+            Application.Exit();
+        };
+        contextMenu.Items.Add(exitItem);
 
-            return true;
-        }, IntPtr.Zero);
+        _trayIcon.ContextMenuStrip = contextMenu;
+
+        // Double-click to apply overlays
+        _trayIcon.DoubleClick += (s, e) => ApplyOverlaysWithNotification();
+
+        // Apply overlays on startup
+        ApplyOverlaysWithNotification();
+
+        // Start polling to keep overlays applied
+        StartPolling();
+
+        // Run the application
+        Application.Run();
     }
 
-    static List<string> ApplyOverlays(bool verbose)
+    static void ApplyOverlaysWithNotification()
+    {
+        var appliedIcons = ApplyOverlays();
+        if (appliedIcons.Count > 0)
+        {
+            _trayIcon?.ShowBalloonTip(
+                2000,
+                "TaskbarIconOverlay",
+                $"Applied {appliedIcons.Count} overlay(s): {string.Join(", ", appliedIcons)}",
+                ToolTipIcon.Info);
+        }
+        else
+        {
+            _trayIcon?.ShowBalloonTip(
+                2000,
+                "TaskbarIconOverlay",
+                "No new overlays to apply.",
+                ToolTipIcon.None);
+        }
+    }
+
+    static List<string> ApplyOverlays()
     {
         // Load configuration or use defaults
-        var config = LoadConfig(verbose);
+        var config = LoadConfig();
         string iconsDir = config.IconsPath;
 
-        int matchedWindows = 0;
         var appliedIcons = new List<string>();
 
-        var taskbar = (ITaskbarList3)new CTaskbarList();
+        var taskbarObj = new CTaskbarList();
+        var taskbar = (ITaskbarList3)taskbarObj;
         taskbar.HrInit();
 
+        try
+        {
         EnumWindows((hWnd, lParam) =>
         {
             if (!IsWindowVisible(hWnd)) return true;
@@ -120,21 +175,27 @@ class Program
 
             // Determine the icon name to use
             string? iconName = null;
+            string? subFolder = null;
 
             // Special handling for VS Code / VSCodium: extract workspace name
+            // and use a process-name-based subfolder (e.g., icons/Code/, icons/VSCodium/)
             if (IsCodeFamilyWindow(hWnd))
             {
                 iconName = ExtractWorkspaceName(title);
+                subFolder = processName;
             }
 
-            // Fallback: use the process name as icon name
+            // Fallback: use the process name as icon name (in root icons folder)
             if (string.IsNullOrWhiteSpace(iconName))
             {
                 iconName = SanitizeFileStem(processName);
+                subFolder = null;
             }
 
             // Try to find an icon file
-            string icoPath = Path.Combine(iconsDir, iconName + ".ico");
+            string icoPath = subFolder != null
+                ? Path.Combine(iconsDir, subFolder, iconName + ".ico")
+                : Path.Combine(iconsDir, iconName + ".ico");
 
             if (!File.Exists(icoPath))
             {
@@ -142,48 +203,110 @@ class Program
                 return true;
             }
 
-            // Skip if we've already applied an overlay to this window
-            if (_processedWindows.Contains(hWnd))
-            {
-                return true;
-            }
-
-            matchedWindows++;
-
             IntPtr hIcon = LoadImage(IntPtr.Zero, icoPath, IMAGE_ICON, 0, 0, LR_LOADFROMFILE);
             if (hIcon == IntPtr.Zero)
             {
                 // Can't load the icon (bad .ico, permissions, etc.)
-                if (verbose) Console.WriteLine($"[WARN] Failed to load: {icoPath}");
                 return true;
             }
 
             taskbar.SetOverlayIcon(hWnd, hIcon, iconName);
-            _processedWindows.Add(hWnd);
+            DestroyIcon(hIcon);
             appliedIcons.Add(iconName);
-            if (verbose) Console.WriteLine($"[OK] {iconName}  <-  {processName}  ::  {title}");
 
             return true;
         }, IntPtr.Zero);
-
-        if (verbose)
+        }
+        finally
         {
-            Console.WriteLine();
-            Console.WriteLine($"Windows matched: {matchedWindows}");
-            Console.WriteLine($"Overlays applied: {appliedIcons.Count}");
-            Console.WriteLine($"Icons dir: {iconsDir}");
+            Marshal.ReleaseComObject(taskbarObj);
         }
 
         return appliedIcons;
     }
 
-    static Config LoadConfig(bool verbose = true)
+    static void RemoveOverlays()
     {
-        string defaultIconsDir = Path.Combine(Directory.GetCurrentDirectory(), "icons");
+        var taskbarObj = new CTaskbarList();
+        var taskbar = (ITaskbarList3)taskbarObj;
+        taskbar.HrInit();
+
+        try
+        {
+        EnumWindows((hWnd, lParam) =>
+        {
+            if (!IsWindowVisible(hWnd)) return true;
+
+            string title = GetTitle(hWnd);
+            if (string.IsNullOrWhiteSpace(title)) return true;
+
+            string processName = GetProcessName(hWnd);
+            if (IsIgnoredProcess(processName)) return true;
+
+            taskbar.SetOverlayIcon(hWnd, IntPtr.Zero, null);
+            return true;
+        }, IntPtr.Zero);
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(taskbarObj);
+        }
+
+        _trayIcon?.ShowBalloonTip(
+            2000,
+            "TaskbarIconOverlay",
+            "All overlays removed.",
+            ToolTipIcon.Info);
+    }
+
+    const string StartupRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string StartupValueName = "TaskbarIconOverlay";
+
+    static bool IsStartupEnabled()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(StartupRegistryKey, false);
+        return key?.GetValue(StartupValueName) != null;
+    }
+
+    static void SetStartupEnabled(bool enabled)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(StartupRegistryKey, true);
+        if (key == null) return;
+
+        if (enabled)
+        {
+            // Use the current executable path
+            string exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName;
+            key.SetValue(StartupValueName, $"\"{exePath}\"");
+        }
+        else
+        {
+            key.DeleteValue(StartupValueName, false);
+        }
+    }
+
+    static void StartPolling(int intervalMs = 5000)
+    {
+        if (_pollTimer != null) return;
+        _pollTimer = new System.Windows.Forms.Timer();
+        _pollTimer.Interval = intervalMs;
+        _pollTimer.Tick += (s, e) => ApplyOverlays();
+        _pollTimer.Start();
+    }
+
+    static void StopPolling()
+    {
+        _pollTimer?.Stop();
+        _pollTimer?.Dispose();
+        _pollTimer = null;
+    }
+
+    static Config LoadConfig()
+    {
+        string defaultIconsDir = Path.Combine(AppContext.BaseDirectory, "icons");
 
         if (!File.Exists(ConfigFilePath))
         {
-            if (verbose) Console.WriteLine($"[INFO] No config file found, using default icons folder.");
             return new Config { IconsPath = defaultIconsDir };
         }
 
@@ -194,7 +317,6 @@ class Program
 
             if (config == null || string.IsNullOrWhiteSpace(config.IconsPath))
             {
-                if (verbose) Console.WriteLine($"[WARN] Config file is empty or invalid, using default icons folder.");
                 return new Config { IconsPath = defaultIconsDir };
             }
 
@@ -204,12 +326,10 @@ class Program
                 config.IconsPath = Path.Combine(AppContext.BaseDirectory, config.IconsPath);
             }
 
-            if (verbose) Console.WriteLine($"[INFO] Loaded config from: {ConfigFilePath}");
             return config;
         }
-        catch (Exception ex)
+        catch
         {
-            if (verbose) Console.WriteLine($"[WARN] Failed to load config: {ex.Message}. Using default icons folder.");
             return new Config { IconsPath = defaultIconsDir };
         }
     }
@@ -221,7 +341,7 @@ class Program
 
         try
         {
-            var p = Process.GetProcessById((int)pid);
+            using var p = Process.GetProcessById((int)pid);
             string name = p.ProcessName;
 
             // VS Code: Code.exe
@@ -250,7 +370,8 @@ class Program
         GetWindowThreadProcessId(hWnd, out uint pid);
         try
         {
-            return Process.GetProcessById((int)pid).ProcessName;
+            using var p = Process.GetProcessById((int)pid);
+            return p.ProcessName;
         }
         catch
         {
@@ -328,6 +449,9 @@ class Program
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern IntPtr LoadImage(IntPtr hInst, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern bool DestroyIcon(IntPtr hIcon);
 
     // --- Taskbar COM ---
     [ComImport]
