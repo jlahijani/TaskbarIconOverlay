@@ -88,7 +88,7 @@ dotnet run
 To build the executable for distribution:
 
 ```powershell
-dotnet publish -c Release -r win-x64 -o .\dist
+dotnet publish -c Release -r win-x64 -o .\TaskbarIconOverlay
 ```
 
 ## TODO
