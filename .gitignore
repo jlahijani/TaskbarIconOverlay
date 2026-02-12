@@ -4,7 +4,9 @@
 # Local/private files
 dist/
 .private/
+TaskbarIconOverlay/
 *.code-workspace
+TaskbarIconOverlay.zip
 
 # User-specific files
 *.suo
